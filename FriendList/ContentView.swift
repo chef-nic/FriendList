@@ -6,75 +6,54 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
-    @State private var users = [User]()
+    @Environment(\.modelContext) var modelContext
+    @Query(sort: \User.name) var users: [User]
     
     var body: some View {
         NavigationStack {
-            List(users, id: \.id) { user in
-                HStack {
-                    Image(systemName: "circle.fill")
-                        .foregroundStyle(user.isActive ? .green : .gray)
-                    NavigationLink(user.name) {
-                        DetailView(user: user)
+            List(users) { user in
+                NavigationLink(value: user) {
+                    HStack {
+                        Circle()
+                            .fill(user.isActive ? .green : .red)
+                            .frame(width: 30)
+                        
+                        Text(user.name)
                     }
-                    .foregroundStyle(.primary)
                 }
             }
-            .navigationBarTitle("Friend List")
-            .onAppear {
-                Task {
-                    await fetchUsers()
-                }
+            .navigationTitle("Friend List")
+            .navigationDestination(for: User.self) { user in
+                UserView(user: user)
+            }
+            .task {
+                await fetchUsers()
             }
         }
     }
     
     func fetchUsers() async {
-        if users.isEmpty {
-            // URL Session https://www.hackingwithswift.com/samples/friendface.json
+        guard users.isEmpty else { return }
+        
+        do {
             let url = URL(string: "https://www.hackingwithswift.com/samples/friendface.json")!
-            do {
-                let (data, _) = try await URLSession.shared.data(from: url)
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .iso8601
-                let users = try decoder.decode([User].self, from: data)
-                self.users = users
-            } catch {
-                print("Error decoding users: \(error)")
-                users = []
+            let (data, _) = try await URLSession.shared.data(from: url)
+            
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let users = try decoder.decode([User].self, from: data)
+            users.forEach { user in
+                modelContext.insert(user)
             }
-        } else {
-            return
+        } catch {
+            print("Download failed")
         }
     }
 }
 
 #Preview {
     ContentView()
-}
-
-struct DetailView: View {
-    var user: User
-    
-    var body: some View {
-        List {
-            Text("Name: \(user.name)")
-            Text("Age: \(user.age)")
-            Text("Company: \(user.company)")
-            Text("Email: \(user.email)")
-            Text("Address: \(user.address)")
-            Text("About: \(user.about)")
-            Text("Registered: \(user.registered.formatted())")
-            Text("Tags: \(user.tags.joined(separator: ", "))")
-            Section {
-                ForEach(user.friends, id: \.id) { friend in
-                    Text(friend.name)
-                }
-            } header: {
-                Text("Friends")
-            }
-        }
-    }
 }
